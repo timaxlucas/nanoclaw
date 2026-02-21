@@ -109,6 +109,8 @@ function buildVolumeMounts(
     '.claude',
   );
   fs.mkdirSync(groupSessionsDir, { recursive: true });
+  // Ensure the container's node user (uid 1000) can write here when host runs as root
+  fs.chmodSync(groupSessionsDir, 0o777);
   const settingsFile = path.join(groupSessionsDir, 'settings.json');
   if (!fs.existsSync(settingsFile)) {
     fs.writeFileSync(settingsFile, JSON.stringify({
@@ -146,9 +148,12 @@ function buildVolumeMounts(
   // Per-group IPC namespace: each group gets its own IPC directory
   // This prevents cross-group privilege escalation via IPC
   const groupIpcDir = path.join(DATA_DIR, 'ipc', group.folder);
-  fs.mkdirSync(path.join(groupIpcDir, 'messages'), { recursive: true });
-  fs.mkdirSync(path.join(groupIpcDir, 'tasks'), { recursive: true });
-  fs.mkdirSync(path.join(groupIpcDir, 'input'), { recursive: true });
+  for (const sub of ['messages', 'tasks', 'input']) {
+    const d = path.join(groupIpcDir, sub);
+    fs.mkdirSync(d, { recursive: true });
+    // Ensure container's node user (uid 1000) can write/delete files here
+    fs.chmodSync(d, 0o777);
+  }
   mounts.push({
     hostPath: groupIpcDir,
     containerPath: '/workspace/ipc',
