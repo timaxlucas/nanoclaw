@@ -246,6 +246,32 @@ export class WhatsAppChannel implements Channel {
     });
   }
 
+  async sendFile(jid: string, filePath: string, caption?: string, mimeType?: string): Promise<void> {
+    const resolvedMime = mimeType || 'video/mp4';
+    const isVideo = resolvedMime.startsWith('video/');
+    const isAudio = resolvedMime.startsWith('audio/');
+
+    const content: Record<string, unknown> = { mimetype: resolvedMime };
+    if (caption) content.caption = caption;
+
+    if (isVideo) {
+      content.video = { url: `file://${filePath}` };
+    } else if (isAudio) {
+      content.audio = { url: `file://${filePath}` };
+    } else {
+      content.document = { url: `file://${filePath}` };
+      content.fileName = path.basename(filePath);
+    }
+
+    try {
+      await this.sock.sendMessage(jid, content as Parameters<WASocket['sendMessage']>[1]);
+      logger.info({ jid, filePath, mimeType: resolvedMime }, 'File sent');
+    } catch (err) {
+      logger.error({ jid, filePath, err }, 'Failed to send file');
+      throw err;
+    }
+  }
+
   async sendMessage(jid: string, text: string): Promise<void> {
     // Prefix bot messages with assistant name so users know who's speaking.
     // On a shared number, prefix is also needed in DMs (including self-chat)
