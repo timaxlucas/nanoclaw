@@ -5,6 +5,7 @@ import { CronExpressionParser } from 'cron-parser';
 
 import {
   DATA_DIR,
+  GROUPS_DIR,
   IPC_POLL_INTERVAL,
   MAIN_GROUP_FOLDER,
   TIMEZONE,
@@ -16,6 +17,7 @@ import { RegisteredGroup } from './types.js';
 
 export interface IpcDeps {
   sendMessage: (jid: string, text: string) => Promise<void>;
+  sendFile?: (jid: string, filePath: string, caption?: string, mimeType?: string) => Promise<void>;
   registeredGroups: () => Record<string, RegisteredGroup>;
   registerGroup: (jid: string, group: RegisteredGroup) => void;
   syncGroupMetadata: (force: boolean) => Promise<void>;
@@ -87,6 +89,32 @@ export function startIpcWatcher(deps: IpcDeps): void {
                   logger.warn(
                     { chatJid: data.chatJid, sourceGroup },
                     'Unauthorized IPC message attempt blocked',
+                  );
+                }
+              } else if (data.type === 'media_message' && data.chatJid && data.filePath) {
+                // Authorization: verify this group can send to this chatJid
+                const targetGroup = registeredGroups[data.chatJid];
+                if (
+                  isMain ||
+                  (targetGroup && targetGroup.folder === sourceGroup)
+                ) {
+                  if (!deps.sendFile) {
+                    logger.warn({ sourceGroup }, 'Channel does not support sendFile');
+                  } else {
+                    // Resolve relative path from group folder to absolute host path
+                    const resolvedPath = path.isAbsolute(data.filePath)
+                      ? data.filePath
+                      : path.join(GROUPS_DIR, sourceGroup, data.filePath);
+                    await deps.sendFile(data.chatJid, resolvedPath, data.caption, data.mimeType);
+                    logger.info(
+                      { chatJid: data.chatJid, sourceGroup, filePath: resolvedPath },
+                      'IPC media message sent',
+                    );
+                  }
+                } else {
+                  logger.warn(
+                    { chatJid: data.chatJid, sourceGroup },
+                    'Unauthorized IPC media_message attempt blocked',
                   );
                 }
               }
