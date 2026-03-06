@@ -6,59 +6,43 @@ allowed-tools: Bash(yt-dlp *), Write
 
 # Video Download with yt-dlp
 
-Download a video from any supported site and send it back as an MP4 via WhatsApp.
+Download a video from any supported site and send it back as an MP4.
 
 ## Full workflow
 
 ```bash
-# 1. Download as mp4 to the group workspace
+# 1. Download to /workspace/group/ (NOT /tmp/ — the host cannot access /tmp/)
 yt-dlp -f "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best" \
   --merge-output-format mp4 \
-  -o "/workspace/group/%(title)s.%(ext)s" \
+  --no-playlist \
+  --restrict-filenames \
+  -o "/workspace/group/video.%(ext)s" \
   "<URL>"
 
-# 2. Find the downloaded file
-ls /workspace/group/*.mp4
-
-# 3. Send it via IPC
-```
-
-Then write an IPC media message to send the file:
-
-```json
-// Write to: /workspace/ipc/messages/<timestamp>.json
-{
-  "type": "media_message",
-  "chatJid": "<CHAT_JID>",
-  "filePath": "video_title.mp4",
-  "caption": "Here's your video!",
-  "mimeType": "video/mp4"
+# 2. Send via IPC — use Python to write valid JSON (avoids shell escaping issues)
+python3 -c "
+import json, os, time, random, string
+data = {
+    'type': 'media_message',
+    'chatJid': os.environ['NANOCLAW_CHAT_JID'],
+    'filePath': 'video.mp4',
+    'caption': 'Here is your video!',
+    'mimeType': 'video/mp4',
 }
+fname = f'/workspace/ipc/messages/{time.time_ns()}.json'
+with open(fname, 'w') as f:
+    json.dump(data, f)
+print('IPC written:', fname)
+"
+
+# 3. Clean up after sending
+rm -f /workspace/group/video.mp4
 ```
 
-The `filePath` is relative to the group folder — just the filename, no `/workspace/group/` prefix.
-
-## IPC write example
-
-```bash
-cat > /workspace/ipc/messages/$(date +%s%N).json << 'EOF'
-{
-  "type": "media_message",
-  "chatJid": "CHAT_JID_HERE",
-  "filePath": "video.mp4",
-  "caption": "Here's your video!",
-  "mimeType": "video/mp4"
-}
-EOF
-```
-
-## Tips
-
-- Always use `-f "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best"` to get a proper mp4
-- Use `--no-playlist` if the URL might be a playlist but the user only wants one video
-- Use `--max-filesize 50m` to avoid very large files that WhatsApp rejects
-- Clean up the file after sending: `rm /workspace/group/video.mp4`
-- If the title has special characters, use `-o "/workspace/group/video.%(ext)s"` for a safe name
+**Key rules:**
+- Always save to `/workspace/group/`, never `/tmp/` — the host can't reach `/tmp/`
+- Always use Python to write the IPC JSON — shell heredocs break with special characters
+- `filePath` is just the filename (e.g. `video.mp4`), not the full path
 
 ## Common flags
 
