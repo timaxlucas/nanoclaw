@@ -3,10 +3,11 @@
 
 FROM node:22-slim
 
-# Install system dependencies for Chromium and media tools
+# Install system dependencies for Chromium
 RUN apt-get update && apt-get install -y \
     chromium \
     fonts-liberation \
+    fonts-noto-cjk \
     fonts-noto-color-emoji \
     libgbm1 \
     libnss3 \
@@ -23,10 +24,6 @@ RUN apt-get update && apt-get install -y \
     libxshmfence1 \
     curl \
     git \
-    python3 \
-    python3-pip \
-    ffmpeg \
-    && pip3 install --break-system-packages yt-dlp \
     && rm -rf /var/lib/apt/lists/*
 
 # Set Chromium path for agent-browser
